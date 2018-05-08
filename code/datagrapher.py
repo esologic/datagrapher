@@ -24,7 +24,7 @@ class EasyStats(object):
 
 class GraphSet(object):
 
-    def __init__(self, title, unit, data_set, y_axis_limits=None):
+    def __init__(self, title, unit, data_set, y_axis_limits=None, smart_y_max=True):
         self.title = title
         self.unit = unit
         self.data_set = data_set
@@ -33,9 +33,14 @@ class GraphSet(object):
 
         # set the limits of the y axis
         if y_axis_limits is None:
-            smallest_y = min(data_set)
-            largest_y = max(data_set)
-            self.y_axis_limits = smallest_y, largest_y
+            if smart_y_max:
+                smallest_y = min(data_set)
+                largest_y = mean(data_set) + 3*stdev(data_set)
+                self.y_axis_limits = smallest_y, largest_y
+            else:
+                smallest_y = min(data_set)
+                largest_y = max(data_set)
+                self.y_axis_limits = smallest_y, largest_y
         else:
             self.y_axis_limits = y_axis_limits
 
@@ -138,11 +143,15 @@ class DataGrapher(object):
         else:
             plot.savefig("output.png")
 
-    def render_as_image(self, filename):
+    def render_as_image(self, filename, as_process=True):
         self.filename = filename
-        render_process = Process(target=self.__run_matpotlib__)
-        render_process.start()
-        render_process.join()
+
+        if as_process:
+            render_process = Process(target=self.__run_matpotlib__)
+            render_process.start()
+            render_process.join()
+        else:
+            self.__run_matpotlib__()
 
     def render_as_pickle(self, pickle_path):
         with open(pickle_path, "wb") as file:
