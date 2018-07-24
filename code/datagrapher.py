@@ -135,7 +135,8 @@ class DataGrapher(object):
             lowest = axis.get_position()
 
         # Draw the note
-        figure.text(lowest.x0, (lowest.y0 - (lowest.height + 0.0125)), "Note: " + self.note, horizontalalignment='left', verticalalignment='bottom')
+        # figure.text(lowest.x0, (lowest.y0 - (lowest.height + 0.0125)), "Note: " + self.note, horizontalalignment='left', verticalalignment='bottom')
+        figure.text(lowest.x0, (lowest.y0 - 0.08), "Note: " + self.note, horizontalalignment='left', verticalalignment='bottom')
 
         # save the plot
         if self.filename is not None:
