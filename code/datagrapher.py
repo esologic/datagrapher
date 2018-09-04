@@ -80,7 +80,7 @@ class DataGrapher(object):
         figure, axes = plot.subplots(len(self.graph_sets), figsize=self.figure_size)
 
         # Draw the chart title
-        figure.text(0.5, 1, self.title, horizontalalignment='center', verticalalignment='top', fontweight="bold",
+        figure.text(0.5, 0.9, self.title, horizontalalignment='center', verticalalignment='top', fontweight="bold",
                     fontsize="x-large")
 
         b = .1
@@ -197,7 +197,7 @@ class TimeSeriesDataGrapher(object):
             for stamp in time_series_graph_set.timestamps:
                 x_values_unsorted.add(stamp)
 
-        x_values_sorted = list(reversed(sorted(list(x_values_unsorted))))
+        x_values_sorted = sorted(list(x_values_unsorted))
 
         x_value_strings = []
         for x_value in x_values_sorted:
@@ -278,12 +278,15 @@ class TimeSeriesDataGrapher(object):
             lowest = axis.get_position()
             final = axis
 
-        final.set_xticks(x_value_strings)
+        final.set_xticklabels(x_value_strings)
+
+        #print(x_value_strings)
+
         final.xaxis.set_visible(True)
 
-        xticks = ticker.MaxNLocator(10)
+        #xticks = ticker.MaxNLocator(10)
 
-        final.xaxis.set_major_locator(xticks)
+        #final.xaxis.set_major_locator(xticks)
 
         for label in final.get_xticklabels():
             label.set_rotation(15)
@@ -365,7 +368,6 @@ class TimeSeriesGraphSet(object):
 
     def __iter__(self):
         return iter(self.__values__)
-
 
 
 class TimeSeriesGraphTable(object):
