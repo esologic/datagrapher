@@ -2,6 +2,7 @@ import matplotlib
 from matplotlib import ticker
 matplotlib.use('Agg')
 import matplotlib.pyplot as plot
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 from datetime import datetime
 from multiprocessing import Process
 from statistics import mean, median_low, median_high, stdev, StatisticsError
@@ -9,7 +10,6 @@ import pickle
 import random
 
 from collections import deque
-
 
 class EasyStats(object):
 
@@ -161,6 +161,18 @@ class DataGrapher(object):
             file.flush()
 
 
+class HoursMinutesSeconds(object):
+
+    def __init__(self, hours=0, minutes=0, seconds=0):
+        self.hours = hours
+        self.minutes = minutes
+        self.seconds = seconds
+
+    @property
+    def total_seconds(self):
+        return (self.hours * 3600) + (self.minutes * 3600) + self.seconds
+
+
 class TimeSeriesDataGrapher(object):
 
     def __init__(self, title, note, graph_table, figure_size=(12, 12), filename=None):
@@ -221,7 +233,6 @@ class TimeSeriesDataGrapher(object):
         plot.subplots_adjust(left=0.125, right=0.85, bottom=0.1 + 0.05, top=0.975, wspace=0.2, hspace=0.1)
 
         lowest = None
-        final = None
 
         for index, graph_set in enumerate(good_sets):
 
@@ -245,26 +256,11 @@ class TimeSeriesDataGrapher(object):
                 else:
                     y_values.append(0)
 
+            fake_y_axis = range(len(y_values))
+
             stats = EasyStats(graph_set.values)
 
             axis.set_ylim([0, stats.max + stats.standard_deviation])
-
-            axis.xaxis.set_visible(False)
-
-            # if the data is greater than the mean + 1 stdev, it is highlighted in red
-
-            print("bg start")
-            print(y_values)
-            bar_graph = axis.bar(range(len(y_values), 0, -1), y_values)
-            print("bg end")
-
-            print("making bar")
-            for datum, bar, in zip(y_values, bar_graph):
-                if datum > stats.mean * 2:
-                    bar.set_color("red")
-                else:
-                    bar.set_color("blue")
-            print("bar done")
 
             legend_text = "Min: " + str(stats.min) + ", "
             legend_text += "Max: " + str(stats.max) + "\n"
@@ -276,20 +272,28 @@ class TimeSeriesDataGrapher(object):
             axis.text(0.025, 0.90, legend_text, verticalalignment='top', fontsize=10, transform=axis.transAxes, bbox=dict(boxstyle='square', facecolor='wheat', alpha=0.5))
 
             lowest = axis.get_position()
-            final = axis
 
-        final.set_xticklabels(x_value_strings)
+            last_axis = (graph_set is good_sets[-1])
 
-        #print(x_value_strings)
+            bar_graph = axis.bar(fake_y_axis, y_values)
 
-        final.xaxis.set_visible(True)
+            if last_axis:
+                for label in axis.get_xticklabels():
+                    label.set_rotation(15)
 
-        #xticks = ticker.MaxNLocator(10)
+                num_x_ticks = 15
 
-        #final.xaxis.set_major_locator(xticks)
+                axis.xaxis.set_major_locator(MaxNLocator(num_x_ticks))
+                axis.set_xticklabels(x_value_strings[::int(len(x_value_strings) / num_x_ticks)])
 
-        for label in final.get_xticklabels():
-            label.set_rotation(15)
+            else:
+                axis.xaxis.set_visible(False)
+
+            for datum, bar, in zip(y_values, bar_graph):
+                if datum > stats.mean * 2:
+                    bar.set_color("red")
+                else:
+                    bar.set_color("blue")
 
         # Draw the note
         figure.text(lowest.x0, (lowest.y0 - 0.08), "Note: " + self.note, horizontalalignment='left', verticalalignment='bottom')
@@ -299,8 +303,6 @@ class TimeSeriesDataGrapher(object):
             plot.savefig(self.filename)
         else:
             plot.savefig("output.png")
-
-        print("rendered")
 
     def render_as_image(self, filename, as_process=True):
         self.filename = filename
@@ -327,26 +329,45 @@ class TimeSeriesValue(object):
 
 class TimeSeriesGraphSet(object):
 
-    def __init__(self, name, unit, maxlen):
+    def __init__(self, name, unit, max_value_age):
         """
         Rules:
-        1. Impossible to have two datapoints at the same time
+        1. Impossible to have two datapoints at the same time, if you need this functionality you should probably use multiple graphsets
+        2. All the code for the `delete_entries_older_than` assumes that you values are ALREADY in time order
+
+        Also, if you want to make sure that the data you have stored is within your given timeframe, call `clear_old_values` before working with it.
+        That method is only called every time values are added, so it isn't guaranteed to be called all the time
+
         :param name:
         :param unit:
-        :param maxlen:
+        :param max_value_age:
         """
 
         self.name = name
         self.unit = unit
+        self.max_value_age = max_value_age
+
         self.__values__ = []
         self.__timestamp_to_value__ = {}
 
     def add_value(self, value, timestamp):
         self.__values__.append(TimeSeriesValue(value, timestamp))
         self.__timestamp_to_value__[timestamp] = value
+        self.clear_old_values()
 
     def value_at_time(self, timestamp):
         return self.__timestamp_to_value__[timestamp]
+
+    def clear_old_values(self):
+        deleted_count = 0
+        now = datetime.now()
+        for last_value in self.__values__:
+            if (now - last_value.timestamp).total_seconds() > self.max_value_age.total_seconds:
+                self.__values__.remove(last_value)
+                del self.__timestamp_to_value__[last_value.timestamp]
+                deleted_count += 1
+            else:
+                break
 
     @property
     def values(self):
@@ -372,8 +393,8 @@ class TimeSeriesGraphSet(object):
 
 class TimeSeriesGraphTable(object):
 
-    def __init__(self, maxlen):
-        self.maxlen = maxlen
+    def __init__(self, max_value_age):
+        self.max_value_age = max_value_age
         self.__series_dict__ = {}
 
     def __iter__(self):
@@ -387,7 +408,7 @@ class TimeSeriesGraphTable(object):
         if name in self.__series_dict__:
             raise KeyError(name + " already in table")
         else:
-            self.__series_dict__[name] = TimeSeriesGraphSet(name, unit, self.maxlen)
+            self.__series_dict__[name] = TimeSeriesGraphSet(name, unit, self.max_value_age)
 
     def add_gset(self, gset):
 
