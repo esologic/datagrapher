@@ -2,14 +2,18 @@ import matplotlib
 from matplotlib import ticker
 matplotlib.use('Agg')
 import matplotlib.pyplot as plot
-from matplotlib.ticker import FuncFormatter, MaxNLocator
+from matplotlib.ticker import FuncFormatter, MaxNLocator, LinearLocator
 from datetime import datetime
 from multiprocessing import Process
 from statistics import mean, median_low, median_high, stdev, StatisticsError
 import pickle
 import random
+import logging
+from collections import OrderedDict
+
 
 from collections import deque
+
 
 class EasyStats(object):
 
@@ -21,7 +25,11 @@ class EasyStats(object):
         self.median_high = round(median_high(raw_data), round_place)
         self.max = round(max(raw_data), round_place)
         self.min = round(min(raw_data), round_place)
-        self.standard_deviation = round(stdev(raw_data), round_place)
+
+        try:
+            self.standard_deviation = round(stdev(raw_data), round_place)
+        except StatisticsError:
+            self.standard_deviation = 0
 
 
 class GraphSet(object):
@@ -175,7 +183,7 @@ class HoursMinutesSeconds(object):
 
 class TimeSeriesDataGrapher(object):
 
-    def __init__(self, title, note, graph_table, figure_size=(12, 12), filename=None):
+    def __init__(self, title, note, graph_table, figure_size=(12, 12)):
         """
         DataGrapher is a wrapper for matplotlib that takes in multiple DataSets and plots them on the same x axis
         :param title: The title of the figure
@@ -192,9 +200,12 @@ class TimeSeriesDataGrapher(object):
         self.note = note
         self.graph_table = graph_table
         self.figure_size = figure_size
-        self.filename = filename
 
-    def __run_matpotlib__(self):
+        logging.info("Datagrapher Created")
+
+    def __run_matpotlib__(self, path):
+
+        logging.info("Starting render, output to [" + str(path) + "]")
 
         # make sure empty sets are ignored
         good_sets = []
@@ -235,6 +246,8 @@ class TimeSeriesDataGrapher(object):
         lowest = None
 
         for index, graph_set in enumerate(good_sets):
+
+            logging.info("Graphing data set [" + str(index)+ "/" + str(len(good_sets)) + "]")
 
             # if there is only one axis, it will be just the object, not a list of objects
             try:
@@ -283,7 +296,7 @@ class TimeSeriesDataGrapher(object):
 
                 num_x_ticks = 15
 
-                axis.xaxis.set_major_locator(MaxNLocator(num_x_ticks))
+                axis.xaxis.set_major_locator(LinearLocator(num_x_ticks))
                 axis.set_xticklabels(x_value_strings[::int(len(x_value_strings) / num_x_ticks)])
 
             else:
@@ -296,23 +309,22 @@ class TimeSeriesDataGrapher(object):
                     bar.set_color("blue")
 
         # Draw the note
-        figure.text(lowest.x0, (lowest.y0 - 0.08), "Note: " + self.note, horizontalalignment='left', verticalalignment='bottom')
+        figure.text(lowest.x0, (lowest.y0 - 0.11), "Note: " + self.note, horizontalalignment='left', verticalalignment='bottom')
 
-        # save the plot
-        if self.filename is not None:
-            plot.savefig(self.filename)
-        else:
-            plot.savefig("output.png")
+        logging.info("Writing to file [" + str(path) + "]")
 
-    def render_as_image(self, filename, as_process=True):
-        self.filename = filename
+        plot.savefig(path)
+
+        logging.info("File Written")
+
+    def render_as_image(self, path="output.png", as_process=False):
 
         if as_process:
-            render_process = Process(target=self.__run_matpotlib__)
+            render_process = Process(target=self.__run_matpotlib__, args=path)
             render_process.start()
             render_process.join()
         else:
-            self.__run_matpotlib__()
+            self.__run_matpotlib__(path=path)
 
     def render_as_pickle(self, pickle_path):
         with open(pickle_path, "wb") as file:
@@ -395,7 +407,7 @@ class TimeSeriesGraphTable(object):
 
     def __init__(self, max_value_age):
         self.max_value_age = max_value_age
-        self.__series_dict__ = {}
+        self.__series_dict__ = OrderedDict()
 
     def __iter__(self):
         return iter(self.__series_dict__.values())
@@ -417,6 +429,9 @@ class TimeSeriesGraphTable(object):
         else:
             self.__series_dict__[gset.name] = gset
 
+    def get_gset(self, name):
+        return self.__series_dict__[name]
+
     def add_value(self, name, value, timestamp=None):
 
         if timestamp is None:
@@ -426,6 +441,17 @@ class TimeSeriesGraphTable(object):
             self.__series_dict__[name].add_value(value, timestamp)
         except KeyError:
             raise KeyError(name + " doesn't exist in the table")
+
+    def new_gt_from_names(self, names):
+
+        output = TimeSeriesGraphTable(self.max_value_age)
+
+        for name in names:
+            gset = self.get_gset(name)
+            output.add_gset(gset)
+
+        return output
+
 
     def __getitem__(self, item):
         return self.__series_dict__[item]
